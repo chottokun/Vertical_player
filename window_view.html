@@ -1,0 +1,1034 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube縦長動画プレイヤー（最適化版）</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body, html {
+            height: 100%;
+            overflow: hidden;
+            background-color: #000;
+            font-family: Arial, sans-serif;
+        }
+        
+        .container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            background-color: #000;
+        }
+        
+        .video-container {
+            flex: 1;
+            position: relative;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        #youtube-player, #local-video {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            transition: transform 0.3s ease;
+        }
+        
+        #youtube-player iframe {
+            position: absolute !important;
+            top: 0 !important;
+            left: 0 !important;
+            border: none !important;
+            pointer-events: auto !important;
+        }
+
+        #local-video {
+            display: none;
+        }
+        
+        /* コントロールパネル */
+        .control-panel {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 20px;
+            z-index: 1000;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            pointer-events: none;
+        }
+
+        .control-panel.visible {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .left-controls {
+            display: grid;
+            grid-template-rows: auto auto auto auto;
+            gap: 10px;
+        }
+
+        .right-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            align-items: flex-end;
+        }
+
+        /* 入力エリア */
+        .input-section {
+            display: flex;
+            gap: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 10px;
+            border-radius: 5px;
+        }
+
+        .input-section input[type="text"] {
+            flex: 1;
+            padding: 8px 12px;
+            border: none;
+            border-radius: 3px;
+            font-size: 14px;
+        }
+
+        .input-section input[type="file"] {
+            color: white;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 3px;
+            padding: 8px 12px;
+        }
+
+        /* 拡大率コントロール */
+        .zoom-section {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 10px;
+            border-radius: 5px;
+        }
+
+        .zoom-section span {
+            color: white;
+            font-size: 14px;
+        }
+
+        .zoom-section input[type="range"] {
+            width: 150px;
+        }
+
+        /* プレイリストコントロール */
+        .playlist-section {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 10px;
+            border-radius: 5px;
+        }
+
+        .playlist-section label {
+            color: white;
+            font-size: 14px;
+        }
+
+        .playlist-section select {
+            padding: 5px;
+            border-radius: 3px;
+            border: none;
+            font-size: 14px;
+        }
+
+        /* ファイル操作セクション */
+        .file-section {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 10px;
+            border-radius: 5px;
+        }
+
+        .file-section input[type="file"] {
+            color: white;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 3px;
+            padding: 5px 8px;
+            font-size: 12px;
+        }
+
+        /* ボタンスタイル */
+        .control-btn {
+            background: rgba(255, 255, 255, 0.8);
+            border: none;
+            padding: 8px 12px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 12px;
+            color: #000;
+            transition: background 0.3s ease;
+            white-space: nowrap;
+        }
+        
+        .control-btn:hover {
+            background: rgba(255, 255, 255, 1);
+        }
+
+        .control-btn.primary {
+            background: rgba(0, 123, 255, 0.8);
+            color: white;
+        }
+
+        .control-btn.primary:hover {
+            background: rgba(0, 123, 255, 1);
+        }
+
+        /* 右側のコントロール */
+        .fullscreen-btn {
+            background: rgba(255, 255, 255, 0.8);
+            border: none;
+            padding: 10px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            color: #000;
+        }
+        
+        .fullscreen-btn:hover {
+            background: rgba(255, 255, 255, 1);
+        }
+
+        /* 下部コントロール */
+        .bottom-controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            z-index: 1000;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            pointer-events: none;
+        }
+
+        .bottom-controls.visible {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        /* パン操作の説明 */
+        .pan-info {
+            position: fixed;
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 5px;
+            font-size: 12px;
+            z-index: 1000;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            pointer-events: none;
+        }
+
+        .pan-info.visible {
+            opacity: 1;
+        }
+        
+        /* 動画の上に透明なオーバーレイを配置してマウス操作を可能にする */
+        .video-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 100;
+            cursor: grab;
+        }
+        
+        .video-overlay:active {
+            cursor: grabbing;
+        }
+
+        /* 隠しファイル入力 */
+        .hidden-file-input {
+            display: none;
+        }
+        
+        /* モバイル対応 */
+        @media (max-width: 768px) {
+            .control-panel {
+                top: 10px;
+                left: 10px;
+                right: 10px;
+                grid-template-columns: 1fr;
+                gap: 10px;
+            }
+
+            .right-controls {
+                align-items: stretch;
+            }
+            
+            .control-btn {
+                padding: 6px 10px;
+                font-size: 11px;
+            }
+            
+            .bottom-controls {
+                bottom: 10px;
+                gap: 5px;
+            }
+            
+            .pan-info {
+                bottom: 60px;
+                font-size: 10px;
+            }
+
+            .zoom-section input[type="range"] {
+                width: 100px;
+            }
+
+            .input-section input[type="text"] {
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- 上部コントロールパネル -->
+        <div class="control-panel">
+            <div class="left-controls">
+                <!-- URL/ファイル入力セクション -->
+                <div class="input-section">
+                    <input type="text" id="youtube-url" placeholder="YouTubeのURLを入力してください" value="https://www.youtube.com/watch?v=DU-tsAEboZo">
+                    <button class="control-btn primary" onclick="loadVideo()">動画読み込み</button>
+                    <input type="file" id="local-video-file" accept="video/*" onchange="loadLocalVideo()" style="display: none;">
+                    <button class="control-btn" onclick="document.getElementById('local-video-file').click()">ローカル動画</button>
+                </div>
+
+                <!-- 拡大率調整セクション -->
+                <div class="zoom-section">
+                    <span>拡大率:</span>
+                    <input type="range" id="zoom-slider" min="100" max="500" value="300" step="10">
+                    <span id="zoom-value">300%</span>
+                </div>
+
+                <!-- プレイリストコントロールセクション -->
+                <div class="playlist-section">
+                    <label for="loop-mode">再生終了時:</label>
+                    <select id="loop-mode">
+                        <option value="loop">繰り返し再生</option>
+                        <option value="next">次の動画へ</option>
+                    </select>
+                    <button class="control-btn" onclick="addCurrentVideoToPlaylist()">プレイリストに追加</button>
+                    <button class="control-btn" onclick="clearPlaylist()">クリア</button>
+                </div>
+
+                <!-- ファイル操作セクション -->
+                <div class="file-section">
+                    <button class="control-btn" onclick="savePlaylistToFile()">プレイリスト保存</button>
+                    <input type="file" id="playlist-file" accept=".json,.txt" onchange="loadPlaylistFromFile()" style="display: none;">
+                    <button class="control-btn" onclick="document.getElementById('playlist-file').click()">プレイリスト読み込み</button>
+                    <button class="control-btn" onclick="savePlaylist()">ブラウザに保存</button>
+                    <button class="control-btn" onclick="loadPlaylist()">ブラウザから読み込み</button>
+                </div>
+            </div>
+
+            <div class="right-controls">
+                <button class="fullscreen-btn" onclick="toggleFullscreen()">フルスクリーン</button>
+            </div>
+        </div>
+
+        <!-- 動画エリア -->
+        <div class="video-container">
+            <div id="youtube-player"></div>
+            <video id="local-video" controls></video>
+            <div class="video-overlay"></div>
+        </div>
+        
+        <!-- 下部コントロール -->
+        <div class="bottom-controls">
+            <button class="control-btn" onclick="togglePlay()">再生/停止</button>
+            <button class="control-btn" onclick="toggleMute()">音声ON/OFF</button>
+            <button class="control-btn" onclick="restartVideo()">最初から</button>
+            <button class="control-btn" onclick="resetPan()">位置リセット</button>
+        </div>
+        
+        <!-- パン操作説明 -->
+        <div class="pan-info">
+            矢印キー・WASD・マウスドラッグで動画を左右に移動できます
+        </div>
+    </div>
+
+    <script>
+        let player;
+        let isPlayerReady = false;
+        let panX = 0; // 左右の移動量
+        let panY = 0; // 上下の移動量
+        let isDragging = false;
+        let lastMouseX = 0;
+        let lastMouseY = 0;
+        const maxPanX = 400; // 最大左右移動量
+        const maxPanY = 200; // 最大上下移動量
+        let currentZoom = 300; // 現在の拡大率（%）
+        
+        let autoHideTimer; // 自動非表示タイマー
+        const HIDE_DELAY = 3000; // 3秒後に非表示
+
+        let playlist = [];
+        let currentPlaylistIndex = -1;
+        let isLocalVideo = false; // ローカル動画再生中かどうか
+
+        // すべてのコントロール要素を取得
+        const controlElements = [
+            document.querySelector(".control-panel"),
+            document.querySelector(".bottom-controls"),
+            document.querySelector(".pan-info")
+        ];
+
+        // コントロールの表示/非表示を切り替える関数
+        function toggleControls(show) {
+            controlElements.forEach(el => {
+                if (show) {
+                    el.classList.add("visible");
+                } else {
+                    el.classList.remove("visible");
+                }
+            });
+        }
+
+        // 自動非表示タイマーを開始/リセット
+        function startAutoHideTimer() {
+            clearTimeout(autoHideTimer);
+            toggleControls(true); // コントロールを表示
+            autoHideTimer = setTimeout(() => {
+                toggleControls(false); // コントロールを非表示
+            }, HIDE_DELAY);
+        }
+
+        // ユーザー操作があった場合にタイマーをリセット
+        document.addEventListener("mousemove", startAutoHideTimer);
+        document.addEventListener("keydown", startAutoHideTimer);
+        document.addEventListener("click", startAutoHideTimer);
+        document.addEventListener("touchstart", startAutoHideTimer);
+
+        // YouTube IFrame Player APIの読み込み
+        function loadYouTubeAPI() {
+            const tag = document.createElement("script");
+            tag.src = "https://www.youtube.com/iframe_api";
+            const firstScriptTag = document.getElementsByTagName("script")[0];
+            firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+        }
+        
+        // YouTube APIが読み込まれた後に呼ばれる関数
+        function onYouTubeIframeAPIReady() {
+            // ページロード時にプレイリストを自動読み込み
+            loadPlaylist();
+            const videoId = getVideoIdFromUrl(document.getElementById("youtube-url").value);
+            createPlayer(videoId);
+        }
+        
+        // プレイヤーを作成
+        function createPlayer(videoId) {
+            player = new YT.Player("youtube-player", {
+                height: "100%",
+                width: "100%",
+                videoId: videoId,
+                playerVars: {
+                    "autoplay": 1,
+                    "controls": 0,
+                    "disablekb": 1,
+                    "fs": 0,
+                    "iv_load_policy": 3,
+                    "modestbranding": 1,
+                    "rel": 0,
+                    "showinfo": 0,
+                    "playsinline": 1
+                },
+                events: {
+                    "onReady": onPlayerReady,
+                    "onStateChange": onPlayerStateChange
+                }
+            });
+        }
+        
+        // プレイヤーの準備完了時
+        function onPlayerReady(event) {
+            isPlayerReady = true;
+            event.target.playVideo();
+            setTimeout(forcePlayerSize, 500);
+        }
+        
+        // プレイヤーの状態変更時
+        function onPlayerStateChange(event) {
+            setTimeout(forcePlayerSize, 100);
+
+            if (event.data === YT.PlayerState.ENDED) {
+                const loopMode = document.getElementById("loop-mode").value;
+                if (loopMode === "loop") {
+                    if (isLocalVideo) {
+                        const localVideo = document.getElementById("local-video");
+                        localVideo.currentTime = 0;
+                        localVideo.play();
+                    } else {
+                        player.seekTo(0);
+                        player.playVideo();
+                    }
+                } else if (loopMode === "next") {
+                    playNextVideo();
+                }
+            }
+        }
+
+        // ローカル動画を読み込み
+        function loadLocalVideo() {
+            const fileInput = document.getElementById("local-video-file");
+            const file = fileInput.files[0];
+            
+            if (file) {
+                const localVideo = document.getElementById("local-video");
+                const youtubePlayer = document.getElementById("youtube-player");
+                
+                // YouTube動画を非表示にしてローカル動画を表示
+                youtubePlayer.style.display = "none";
+                localVideo.style.display = "block";
+                
+                // ファイルのURLを作成して動画に設定
+                const fileURL = URL.createObjectURL(file);
+                localVideo.src = fileURL;
+                
+                // 動画の終了イベントを監視
+                localVideo.onended = function() {
+                    const loopMode = document.getElementById("loop-mode").value;
+                    if (loopMode === "loop") {
+                        localVideo.currentTime = 0;
+                        localVideo.play();
+                    } else if (loopMode === "next") {
+                        playNextVideo();
+                    }
+                };
+                
+                isLocalVideo = true;
+                forceLocalVideoSize();
+                resetPan();
+                
+                // URLフィールドにファイル名を表示
+                document.getElementById("youtube-url").value = "ローカル動画: " + file.name;
+            }
+        }
+
+        // ローカル動画のサイズを強制設定
+        function forceLocalVideoSize() {
+            const localVideo = document.getElementById("local-video");
+            
+            // 拡大率に基づいてサイズを計算
+            const zoomHeight = (currentZoom / 100) * 100 + "vh";
+            const zoomWidth = (currentZoom / 100) * (16/9) * 100 + "vh";
+
+            localVideo.style.setProperty("height", zoomHeight, "important");
+            localVideo.style.setProperty("width", zoomWidth, "important");
+            localVideo.style.setProperty("object-fit", "cover", "important");
+        }
+        
+        // プレイヤーのサイズを強制設定
+        function forcePlayerSize() {
+            if (isLocalVideo) {
+                forceLocalVideoSize();
+                return;
+            }
+
+            const playerElement = document.getElementById("youtube-player");
+            const iframe = playerElement.querySelector("iframe");
+            
+            const zoomHeight = (currentZoom / 100) * 100 + "vh";
+            const zoomWidth = (currentZoom / 100) * (16/9) * 100 + "vh";
+
+            if (iframe) {
+                iframe.style.setProperty("height", zoomHeight, "important");
+                iframe.style.setProperty("width", zoomWidth, "important");
+                iframe.style.setProperty("position", "absolute", "important");
+                iframe.style.setProperty("top", "0", "important");
+                iframe.style.setProperty("left", "0", "important");
+                iframe.style.setProperty("border", "none", "important");
+                
+                iframe.setAttribute("width", zoomWidth);
+                iframe.setAttribute("height", zoomHeight);
+            }
+            
+            playerElement.style.setProperty("height", zoomHeight, "important");
+            playerElement.style.setProperty("width", zoomWidth, "important");
+        }
+        
+        // YouTubeのURLから動画IDを抽出
+        function getVideoIdFromUrl(url) {
+            const regex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
+            const match = url.match(regex);
+            return match ? match[1] : null;
+        }
+        
+        // 新しい動画を読み込み
+        function loadVideo() {
+            const url = document.getElementById("youtube-url").value;
+            const videoId = getVideoIdFromUrl(url);
+            
+            if (!videoId) {
+                alert("有効なYouTubeのURLを入力してください");
+                return;
+            }
+
+            // ローカル動画を非表示にしてYouTube動画を表示
+            const localVideo = document.getElementById("local-video");
+            const youtubePlayer = document.getElementById("youtube-player");
+            
+            localVideo.style.display = "none";
+            youtubePlayer.style.display = "block";
+            isLocalVideo = false;
+            
+            if (isPlayerReady && player) {
+                player.loadVideoById(videoId);
+                setTimeout(forcePlayerSize, 1000);
+            } else {
+                createPlayer(videoId);
+            }
+            
+            resetPan();
+        }
+
+        // 現在の動画をプレイリストに追加
+        function addCurrentVideoToPlaylist() {
+            if (isLocalVideo) {
+                alert("ローカル動画はプレイリストに追加できません。");
+                return;
+            }
+
+            const url = document.getElementById("youtube-url").value;
+            const videoId = getVideoIdFromUrl(url);
+            if (videoId && !playlist.includes(videoId)) {
+                playlist.push(videoId);
+                alert("プレイリストに動画を追加しました: " + url);
+            } else if (videoId) {
+                alert("この動画はすでにプレイリストにあります。");
+            } else {
+                alert("有効なYouTubeのURLを入力してください");
+            }
+        }
+
+        // プレイリストをクリア
+        function clearPlaylist() {
+            playlist = [];
+            currentPlaylistIndex = -1;
+            alert("プレイリストをクリアしました。");
+        }
+
+        // 次の動画を再生
+        function playNextVideo() {
+            if (playlist.length === 0) {
+                alert("プレイリストが空です。");
+                return;
+            }
+
+            currentPlaylistIndex++;
+            if (currentPlaylistIndex >= playlist.length) {
+                currentPlaylistIndex = 0;
+            }
+
+            const nextVideoId = playlist[currentPlaylistIndex];
+            
+            // ローカル動画を非表示にしてYouTube動画を表示
+            const localVideo = document.getElementById("local-video");
+            const youtubePlayer = document.getElementById("youtube-player");
+            
+            localVideo.style.display = "none";
+            youtubePlayer.style.display = "block";
+            isLocalVideo = false;
+
+            if (isPlayerReady && player) {
+                player.loadVideoById(nextVideoId);
+                setTimeout(forcePlayerSize, 1000);
+            } else {
+                createPlayer(nextVideoId);
+            }
+            resetPan();
+            document.getElementById("youtube-url").value = `https://www.youtube.com/watch?v=${nextVideoId}`;
+        }
+
+        // プレイリストをブラウザに保存
+        function savePlaylist() {
+            try {
+                localStorage.setItem("youtube_player_playlist", JSON.stringify(playlist));
+                alert("プレイリストをブラウザに保存しました！");
+            } catch (e) {
+                alert("プレイリストの保存に失敗しました。");
+            }
+        }
+
+        // プレイリストをブラウザから読み込み
+        function loadPlaylist() {
+            try {
+                const savedPlaylist = localStorage.getItem("youtube_player_playlist");
+                if (savedPlaylist) {
+                    playlist = JSON.parse(savedPlaylist);
+                    alert("プレイリストをブラウザから読み込みました！動画数: " + playlist.length);
+                    if (playlist.length > 0) {
+                        currentPlaylistIndex = -1;
+                        playNextVideo();
+                    }
+                } else {
+                    alert("保存されたプレイリストはありません。");
+                }
+            } catch (e) {
+                alert("プレイリストの読み込みに失敗しました。");
+            }
+        }
+
+        // プレイリストをファイルに保存
+        function savePlaylistToFile() {
+            if (playlist.length === 0) {
+                alert("プレイリストが空です。");
+                return;
+            }
+
+            const playlistData = {
+                version: "1.0",
+                created: new Date().toISOString(),
+                playlist: playlist.map(videoId => `https://www.youtube.com/watch?v=${videoId}`)
+            };
+
+            const dataStr = JSON.stringify(playlistData, null, 2);
+            const dataBlob = new Blob([dataStr], {type: 'application/json'});
+            
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(dataBlob);
+            link.download = 'youtube_playlist.json';
+            link.click();
+            
+            alert("プレイリストをファイルに保存しました！");
+        }
+
+        // プレイリストをファイルから読み込み
+        function loadPlaylistFromFile() {
+            const fileInput = document.getElementById("playlist-file");
+            const file = fileInput.files[0];
+            
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    try {
+                        const content = e.target.result;
+                        let urls = [];
+                        
+                        if (file.name.endsWith('.json')) {
+                            const data = JSON.parse(content);
+                            urls = data.playlist || data;
+                        } else {
+                            // テキストファイルの場合、行ごとにURLを分割
+                            urls = content.split('\n').filter(line => line.trim());
+                        }
+                        
+                        // URLから動画IDを抽出してプレイリストに追加
+                        const newPlaylist = [];
+                        urls.forEach(url => {
+                            const videoId = getVideoIdFromUrl(url.trim());
+                            if (videoId && !newPlaylist.includes(videoId)) {
+                                newPlaylist.push(videoId);
+                            }
+                        });
+                        
+                        if (newPlaylist.length > 0) {
+                            playlist = newPlaylist;
+                            currentPlaylistIndex = -1;
+                            alert(`プレイリストをファイルから読み込みました！動画数: ${playlist.length}`);
+                            playNextVideo();
+                        } else {
+                            alert("有効なYouTubeのURLが見つかりませんでした。");
+                        }
+                    } catch (error) {
+                        alert("ファイルの読み込みに失敗しました: " + error.message);
+                    }
+                };
+                reader.readAsText(file);
+            }
+        }
+        
+        // 再生/停止の切り替え
+        function togglePlay() {
+            if (isLocalVideo) {
+                const localVideo = document.getElementById("local-video");
+                if (localVideo.paused) {
+                    localVideo.play();
+                } else {
+                    localVideo.pause();
+                }
+            } else if (isPlayerReady && player) {
+                const state = player.getPlayerState();
+                if (state === YT.PlayerState.PLAYING) {
+                    player.pauseVideo();
+                } else {
+                    player.playVideo();
+                }
+            }
+        }
+        
+        // 音声のON/OFF切り替え
+        function toggleMute() {
+            if (isLocalVideo) {
+                const localVideo = document.getElementById("local-video");
+                localVideo.muted = !localVideo.muted;
+            } else if (isPlayerReady && player) {
+                if (player.isMuted()) {
+                    player.unMute();
+                } else {
+                    player.mute();
+                }
+            }
+        }
+        
+        // 動画を最初から再生
+        function restartVideo() {
+            if (isLocalVideo) {
+                const localVideo = document.getElementById("local-video");
+                localVideo.currentTime = 0;
+                localVideo.play();
+            } else if (isPlayerReady && player) {
+                player.seekTo(0);
+                player.playVideo();
+            }
+        }
+        
+        // パン位置をリセット
+        function resetPan() {
+            panX = 0;
+            panY = 0;
+            updatePan();
+        }
+        
+        // パン位置を更新
+        function updatePan() {
+            const targetElement = isLocalVideo ? 
+                document.getElementById("local-video") : 
+                document.getElementById("youtube-player");
+            targetElement.style.transform = `translate(calc(-50% + ${panX}px), calc(-50% + ${panY}px))`;
+        }
+        
+        // 左右上下に移動
+        function panLeft() {
+            panX = Math.max(panX - 30, -maxPanX);
+            updatePan();
+        }
+        
+        function panRight() {
+            panX = Math.min(panX + 30, maxPanX);
+            updatePan();
+        }
+        
+        function panUp() {
+            panY = Math.max(panY - 30, -maxPanY);
+            updatePan();
+        }
+        
+        function panDown() {
+            panY = Math.min(panY + 30, maxPanY);
+            updatePan();
+        }
+        
+        // フルスクリーンの切り替え
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().then(() => {
+                    setTimeout(forcePlayerSize, 100);
+                });
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen().then(() => {
+                        setTimeout(forcePlayerSize, 100);
+                    });
+                }
+            }
+        }
+        
+        // 拡大率スライダーのイベントリスナー
+        const zoomSlider = document.getElementById("zoom-slider");
+        const zoomValueSpan = document.getElementById("zoom-value");
+
+        zoomSlider.addEventListener("input", function() {
+            currentZoom = parseInt(this.value);
+            zoomValueSpan.textContent = currentZoom + "%";
+            forcePlayerSize();
+        });
+
+        // キーボードショートカット
+        document.addEventListener("keydown", function(e) {
+            switch(e.code) {
+                case "Space":
+                    e.preventDefault();
+                    togglePlay();
+                    break;
+                case "KeyM":
+                    toggleMute();
+                    break;
+                case "KeyR":
+                    restartVideo();
+                    break;
+                case "KeyF":
+                    toggleFullscreen();
+                    break;
+                case "ArrowLeft":
+                case "KeyA":
+                    e.preventDefault();
+                    panLeft();
+                    break;
+                case "ArrowRight":
+                case "KeyD":
+                    e.preventDefault();
+                    panRight();
+                    break;
+                case "ArrowUp":
+                case "KeyW":
+                    e.preventDefault();
+                    panUp();
+                    break;
+                case "ArrowDown":
+                case "KeyS":
+                    e.preventDefault();
+                    panDown();
+                    break;
+                case "KeyC":
+                    resetPan();
+                    break;
+                case "Equal":
+                case "NumpadAdd":
+                    if (currentZoom < 500) {
+                        currentZoom = Math.min(currentZoom + 10, 500);
+                        zoomSlider.value = currentZoom;
+                        zoomValueSpan.textContent = currentZoom + "%";
+                        forcePlayerSize();
+                    }
+                    break;
+                case "Minus":
+                case "NumpadSubtract":
+                    if (currentZoom > 100) {
+                        currentZoom = Math.max(currentZoom - 10, 100);
+                        zoomSlider.value = currentZoom;
+                        zoomValueSpan.textContent = currentZoom + "%";
+                        forcePlayerSize();
+                    }
+                    break;
+            }
+        });
+        
+        // マウスドラッグでのパン操作
+        document.querySelector(".video-overlay").addEventListener("mousedown", function(e) {
+            isDragging = true;
+            lastMouseX = e.clientX;
+            lastMouseY = e.clientY;
+            e.preventDefault();
+        });
+        
+        document.addEventListener("mousemove", function(e) {
+            if (!isDragging) return;
+            
+            const deltaX = e.clientX - lastMouseX;
+            const deltaY = e.clientY - lastMouseY;
+            
+            panX = Math.max(Math.min(panX + deltaX, maxPanX), -maxPanX);
+            panY = Math.max(Math.min(panY + deltaY, maxPanY), -maxPanY);
+            
+            updatePan();
+            lastMouseX = e.clientX;
+            lastMouseY = e.clientY;
+        });
+        
+        document.addEventListener("mouseup", function() {
+            isDragging = false;
+        });
+        
+        // タッチデバイスでのタップ操作
+        let tapCount = 0;
+        document.querySelector(".video-overlay").addEventListener("click", function(e) {
+            if (isDragging) return;
+            
+            tapCount++;
+            setTimeout(function() {
+                if (tapCount === 1) {
+                    togglePlay();
+                } else if (tapCount === 2) {
+                    toggleFullscreen();
+                }
+                tapCount = 0;
+            }, 300);
+        });
+        
+        // ページ読み込み時の初期化
+        window.addEventListener("load", function() {
+            loadYouTubeAPI();
+            startAutoHideTimer();
+        });
+        
+        // 画面の向きが変わった時の処理
+        window.addEventListener("orientationchange", function() {
+            setTimeout(function() {
+                forcePlayerSize();
+                resetPan();
+            }, 100);
+        });
+        
+        // フルスクリーン状態の変化を監視
+        document.addEventListener("fullscreenchange", function() {
+            setTimeout(forcePlayerSize, 100);
+        });
+        
+        // 定期的にサイズをチェックして修正
+        setInterval(function() {
+            if (isPlayerReady || isLocalVideo) {
+                forcePlayerSize();
+            }
+        }, 500);
+        
+        // MutationObserverでDOM変更を監視
+        const observer = new MutationObserver(function(mutations) {
+            mutations.forEach(function(mutation) {
+                if (mutation.type === "attributes" && mutation.attributeName === "style") {
+                    setTimeout(forcePlayerSize, 10);
+                }
+            });
+        });
+        
+        // プレイヤーが作成されたら監視開始
+        setTimeout(function() {
+            const iframe = document.querySelector("#youtube-player iframe");
+            if (iframe) {
+                observer.observe(iframe, {
+                    attributes: true,
+                    attributeFilter: ["style", "width", "height"]
+                });
+            }
+        }, 2000);
+    </script>
+</body>
+</html>
+
